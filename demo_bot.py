@@ -33,19 +33,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽"
         await query.edit_message_text(text=text)
     elif query.data == "address":
-        text = " Адрес: г. Москва, ул. Примерная, д. 1"
+        text = "📍 Адрес: г. Москва, ул. Примерная, д. 1"
         await query.edit_message_text(text=text)
     elif query.data == "contacts":
         text = "📞 Контакты: +7 (999) 123-45-67"
         await query.edit_message_text(text=text)
-   elif query.data == "gallery":
-       # Ссылка на картинку (можешь потом заменить на свою)
-       photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
-       await query.message.reply_photo(
-           photo=photo_url,
-           caption="📸 Посмотрите наши работы! Мы делаем лучший сервис в городе."
-       )
-
+    elif query.data == "signup":
+        await query.message.reply_text("Как вас зовут? Напишите ваше имя:")
+        return NAME
+    elif query.data == "gallery":
+        photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
+        await query.message.reply_photo(
+            photo=photo_url,
+            caption="📸 Посмотрите наши работы! Мы делаем лучший сервис в городе."
+        )
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получаем имя и просим телефон"""
     context.user_data['name'] = update.message.text
