@@ -33,8 +33,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽"
         await query.edit_message_text(text=text)
     elif query.data == "address":
-        text = "📍 Адрес: г. Москва, ул. Примерная, д. 1"
-        await query.edit_message_text(text=text)
+        # Отправляем настоящий пин на карте (координаты центра Москвы)
+        await context.bot.send_location(
+            chat_id=query.message.chat_id,
+            latitude=55.751244,
+            longitude=37.618423,
+            caption="📍 Мы находимся здесь! Ждем вас."
+        )
     elif query.data == "contacts":
         text = "📞 Контакты: +7 (999) 123-45-67"
         await query.edit_message_text(text=text)
