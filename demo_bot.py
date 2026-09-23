@@ -15,7 +15,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
         [InlineKeyboardButton("📍 Адрес", callback_data="address")],
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
-        [InlineKeyboardButton("📝 Записаться", callback_data="signup")]
+        [InlineKeyboardButton(" Записаться", callback_data="signup")],
+        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -37,10 +38,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "contacts":
         text = "📞 Контакты: +7 (999) 123-45-67"
         await query.edit_message_text(text=text)
-    elif query.data == "signup":
-        # Начинаем диалог записи
-        await query.message.reply_text("Как вас зовут? Напишите ваше имя:")
-        return NAME
+   elif query.data == "gallery":
+       # Ссылка на картинку (можешь потом заменить на свою)
+       photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
+       await query.message.reply_photo(
+           photo=photo_url,
+           caption="📸 Посмотрите наши работы! Мы делаем лучший сервис в городе."
+       )
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получаем имя и просим телефон"""
