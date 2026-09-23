@@ -1,16 +1,21 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
-# Токен берется из переменных окружения
-TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TOKEN_HERE")
+# Состояния для диалога (сбор имени и телефона)
+NAME, PHONE = range(2)
+
+# Токен бота (берется из Render) и твой ID (зашит в код для простоты)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_ID = 8688778044 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветствие с кнопками"""
+    """Главное меню с кнопками"""
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
-        [InlineKeyboardButton(" Адрес", callback_data="address")],
+        [InlineKeyboardButton("📍 Адрес", callback_data="address")],
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
+        [InlineKeyboardButton("📝 Записаться", callback_data="signup")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -19,26 +24,73 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка кнопок"""
+    """Обработка нажатий на кнопки"""
     query = update.callback_query
     await query.answer()
 
     if query.data == "price":
         text = "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽"
+        await query.edit_message_text(text=text)
     elif query.data == "address":
         text = " Адрес: г. Москва, ул. Примерная, д. 1"
+        await query.edit_message_text(text=text)
     elif query.data == "contacts":
-        text = "📱 Телефон: +7 (999) 123-45-67"
-    else:
-        text = "Неизвестная команда"
+        text = "📞 Контакты: +7 (999) 123-45-67"
+        await query.edit_message_text(text=text)
+    elif query.data == "signup":
+        # Начинаем диалог записи
+        await query.message.reply_text("Как вас зовут? Напишите ваше имя:")
+        return NAME
 
-    await query.edit_message_text(text=text)
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получаем имя и просим телефон"""
+    context.user_data['name'] = update.message.text
+    await update.message.reply_text("Отлично! Теперь напишите ваш номер телефона:")
+    return PHONE
+
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получаем телефон и отправляем заявку тебе"""
+    context.user_data['phone'] = update.message.text
+    
+    # Отправляем заявку тебе в личку
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
+        parse_mode="HTML"
+    )
+    await update.message.reply_text("Спасибо! Мы свяжемся с вами в ближайшее время.")
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена записи"""
+    await update.message.reply_text("Запись отменена. Нажмите /start, чтобы начать заново.")
+    return ConversationHandler.END
 
 def main():
     """Запуск бота"""
-    application = Application.builder().token(TOKEN).build()
+    if not BOT_TOKEN:
+        print("Ошибка: Токен бота не найден!")
+        return
+
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Обработчик команды /start
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
+    
+    # Обработчик обычных кнопок (Прайс, Адрес, Контакты)
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts)$"))
+    
+    # Обработчик кнопки "Записаться" (собирает имя и телефон)
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
+        states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(conv_handler)
+
     print("Бот запущен...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
