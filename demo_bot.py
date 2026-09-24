@@ -22,7 +22,7 @@ def keep_alive():
     t.start()
 
 # --- НАСТРОЙКИ БОТА ---
-NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW = range(6)
+NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW, BROADCAST = range(7)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 8688778044 
 DATA_FILE = "bot_data.json"
@@ -35,7 +35,9 @@ def load_data():
         "price": "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽",
         "address": "📍 Адрес: г. Москва, ул. Примерная, д. 1",
         "contacts": "📞 Контакты: +7 (999) 123-45-67",
-        "leads": []
+        "leads": [],
+        "reviews": [],
+        "stats": {"users": []}
     }
 
 def save_data(data):
@@ -122,41 +124,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
-    elif query.data == "help_admin" and user_id == ADMIN_ID:
-        print(f"➡️ Админ запросил помощь (ID: {user_id})")
-        help_text = """📋 <b>Админ-команды:</b>
-
-/admin - Открыть панель управления
-/leads - Посмотреть все заявки
-/stats - Статистика использования
-/cancel - Отменить текущее действие
-
-<b>Кнопки в админ-панели:</b>
-• Изменить Прайс
-• Изменить Адрес
-• Изменить Контакты
-• Помощь (эта кнопка)"""
-        await query.message.reply_text(help_text, parse_mode="HTML")
-        
-    elif query.data == "edit_price" and user_id == ADMIN_ID:
-        print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
-        await query.message.reply_text("Введите новый текст для Прайса:")
-        return EDIT_PRICE
-    elif query.data == "edit_address" and user_id == ADMIN_ID:
-        print(f"️ Админ хочет изменить адрес (ID: {user_id})")
-        await query.message.reply_text("Введите новый текст для Адреса:")
-        return EDIT_ADDRESS
-    elif query.data == "edit_contacts" and user_id == ADMIN_ID:
-        print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
-        await query.message.reply_text("Введите новый текст для Контактов:")
-        return EDIT_CONTACTS
-    elif query.data == "help_admin" and user_id == ADMIN_ID:
-        print(f"️ Админ запросил помощь (ID: {user_id})")
-        help_text = """📋 <b>Админ-команды:</b>
+        elif query.data == "help_admin" and user_id == ADMIN_ID:
+            print(f"➡️ Админ запросил помощь (ID: {user_id})")
+            help_text = """📋 <b>Админ-команды:</b>
 
 /admin - Открыть панель управления
 /leads - Посмотреть все заявки
 /reviews - Посмотреть все отзывы
+/broadcast - Сделать рассылку
 /stats - Статистика использования
 /cancel - Отменить текущее действие
 
@@ -165,7 +140,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Изменить Адрес
 • Изменить Контакты
 • Помощь (эта кнопка)"""
-        await query.message.reply_text(help_text, parse_mode="HTML")
+            await query.message.reply_text(help_text, parse_mode="HTML")
 
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -275,6 +250,30 @@ async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text, parse_mode="HTML")
 
+async def start_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Эта команда только для админа.")
+        return
+    await update.message.reply_text("✍️ Введите текст для рассылки всем пользователям:")
+    return BROADCAST
+
+async def process_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    users = bot_data.get("stats", {}).get("users", [])
+    
+    success = 0
+    failed = 0
+    
+    for user_id in users:
+        try:
+            await context.bot.send_message(chat_id=user_id, text=text)
+            success += 1
+        except Exception:
+            failed += 1  # Пользователь заблокировал бота
+            
+    await update.message.reply_text(f"✅ Рассылка завершена!\n\nОтправлено успешно: {success}\nОшибок (заблокировали бота): {failed}")
+    return ConversationHandler.END
+
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Эта команда только для админа.")
@@ -315,6 +314,7 @@ def main():
     application.add_handler(CommandHandler("leads", show_leads))
     application.add_handler(CommandHandler("stats", show_stats))
     application.add_handler(CommandHandler("reviews", show_reviews))
+    application.add_handler(CommandHandler("broadcast", start_broadcast))
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
     
@@ -324,6 +324,7 @@ def main():
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
             REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_review)],
+            BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_broadcast)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
