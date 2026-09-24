@@ -1,17 +1,31 @@
 import os
 import json
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
-# Состояния для диалогов
-NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS = range(5)
+# --- FLASK KEEP-ALIVE (Чтобы Render не засыпал) ---
+app = Flask(__name__)
 
-# Настройки
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+# --- НАСТРОЙКИ БОТА ---
+NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS = range(5)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 8688778044 
 DATA_FILE = "bot_data.json"
 
-# --- БАЗА ДАННЫХ (Простой JSON файл) ---
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -28,37 +42,34 @@ def save_data(data):
 
 bot_data = load_data()
 
-# --- КОМАНДЫ И КНОПКИ ---
+# --- ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
         [InlineKeyboardButton("📍 Адрес", callback_data="address")],
-        [InlineKeyboardButton(" Контакты", callback_data="contacts")],
+        [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
         [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
-        [InlineKeyboardButton(" Наши работы", callback_data="gallery")]
+        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Я бот-помощник.\nВыберите пункт:", reply_markup=reply_markup)
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Секретная команда для админа"""
     if update.effective_user.id != ADMIN_ID:
-        return # Если не админ — ничего не делаем
-    
+        return
     keyboard = [
         [InlineKeyboardButton("Изменить Прайс", callback_data="edit_price")],
         [InlineKeyboardButton("Изменить Адрес", callback_data="edit_address")],
         [InlineKeyboardButton("Изменить Контакты", callback_data="edit_contacts")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(" Админ-панель. Что меняем?", reply_markup=reply_markup)
+    await update.message.reply_text("⚙️ Админ-панель. Что меняем?", reply_markup=reply_markup)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
 
-    # Обычные кнопки
     if query.data == "price":
         await query.message.reply_text(bot_data["price"])
     elif query.data == "address":
@@ -73,7 +84,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
         await query.message.reply_photo(photo=photo_url, caption="📸 Посмотрите наши работы!")
         
-    # Админские кнопки (только для твоего ID)
     elif query.data == "edit_price" and user_id == ADMIN_ID:
         await query.message.reply_text("Введите новый текст для Прайса:")
         return EDIT_PRICE
@@ -84,7 +94,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
 
-# --- СБОР ЗАЯВОК ---
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['name'] = update.message.text
     await update.message.reply_text("Отлично! Теперь напишите ваш номер телефона:")
@@ -94,13 +103,12 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['phone'] = update.message.text
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f" <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
+        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
         parse_mode="HTML"
     )
     await update.message.reply_text("Спасибо! Мы свяжемся с вами.")
     return ConversationHandler.END
 
-# --- РЕДАКТИРОВАНИЕ АДМИНОМ ---
 async def edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_data["price"] = update.message.text
     save_data(bot_data)
@@ -129,14 +137,16 @@ def main():
         print("Ошибка: Токен бота не найден!")
         return
 
+    # 1. Запускаем Flask для Keep-Alive (чтобы Render не убивал бота)
+    keep_alive()
+
+    # 2. Запускаем бота
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Обычные команды
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CallbackQueryHandler(button))
     
-    # Диалог записи клиента
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
         states={
@@ -147,7 +157,6 @@ def main():
     )
     application.add_handler(conv_handler)
 
-    # Диалог админа (редактирование)
     admin_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^edit_")],
         states={
