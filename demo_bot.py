@@ -28,6 +28,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 8688778044 
 DATA_FILE = "bot_data.json"
 
+# Инициализация планировщика
+scheduler = AsyncIOScheduler()
+
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -50,7 +53,6 @@ def save_data(data):
         print(f"❌ ОШИБКА СОХРАНЕНИЯ: {e}")
 
 bot_data = load_data()
-scheduler = AsyncIOScheduler()
 
 # --- ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,13 +66,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
         [InlineKeyboardButton("📍 Адрес", callback_data="address")],
-        [InlineKeyboardButton(" Контакты", callback_data="contacts")],
+        [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
         [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
-        [InlineKeyboardButton(" Наши работы", callback_data="gallery")],
+        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
         [InlineKeyboardButton("⭐ Оставить отзыв", callback_data="leave_review")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Я бот-помощник.\nВыберите пункт:", reply_markup=reply_markup)
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -169,7 +172,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_data.setdefault("leads", []).append(new_lead)
     save_data(bot_data)
 
-    # Ставим напоминание через 30 секунд
+    # Ставим напоминание через 30 секунд (для теста)
     scheduler.add_job(
         send_reminder, 
         'date', 
@@ -179,7 +182,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f" <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
+        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
         parse_mode="HTML"
     )
     await update.message.reply_text("Спасибо! Мы свяжемся с вами. Напоминание придет через 30 секунд.")
@@ -305,6 +308,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- ЗАПУСК ---
 async def on_startup(application):
+    # Запускаем планировщик только когда асинхронный цикл уже работает
+    scheduler.start()
     await application.bot.send_message(chat_id=ADMIN_ID, text="🟢 Бот успешно перезапустился и работает!")
 
 def main():
@@ -313,7 +318,6 @@ def main():
         return
 
     keep_alive()
-    scheduler.start()
 
     application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
     
@@ -325,6 +329,7 @@ def main():
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
     
+    # ConversationHandler для клиентских диалогов и рассылки
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(button, pattern="^(signup|leave_review)$"),
@@ -340,6 +345,7 @@ def main():
     )
     application.add_handler(conv_handler)
 
+    # ConversationHandler для админских диалогов
     admin_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^edit_")],
         states={
