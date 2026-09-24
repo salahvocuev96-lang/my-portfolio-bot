@@ -176,7 +176,7 @@ def main():
     )
     application.add_handler(admin_handler)
 
-    print("Бот запущен...")
+    print("✅ БОТ ЗАПУЩЕН И СЛУШАЕТ СООБЩЕНИЯ...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
