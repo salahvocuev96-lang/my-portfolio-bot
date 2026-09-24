@@ -79,6 +79,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print(f"🔘 Получено нажатие кнопки: {query.data} от пользователя {user_id}")
 
+    # Считаем статистику
+    stats = bot_data.setdefault("stats", {})
+    if query.data in stats:
+        stats[query.data] += 1
+    if user_id not in stats.get("users", []):
+        stats.setdefault("users", []).append(user_id)
+    save_data(bot_data)
+
     if query.data == "price":
         print("➡️ Отправляем прайс")
         await query.message.reply_text(bot_data["price"])
@@ -97,6 +105,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("➡️ Отправляем галерею")
         photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
         await query.message.reply_photo(photo=photo_url, caption="📸 Посмотрите наши работы!")
+    elif query.data == "edit_price" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
+        await query.message.reply_text("Введите новый текст для Прайса:")
+        return EDIT_PRICE
+    elif query.data == "edit_address" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить адрес (ID: {user_id})")
+        await query.message.reply_text("Введите новый текст для Адреса:")
+        return EDIT_ADDRESS
+    elif query.data == "edit_contacts" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
+        await query.message.reply_text("Введите новый текст для Контактов:")
+        return EDIT_CONTACTS
+    elif query.data == "help_admin" and user_id == ADMIN_ID:
+        print(f"➡️ Админ запросил помощь (ID: {user_id})")
+        help_text = """📋 <b>Админ-команды:</b>
+
+/admin - Открыть панель управления
+/leads - Посмотреть все заявки
+/stats - Статистика использования
+/cancel - Отменить текущее действие
+
+<b>Кнопки в админ-панели:</b>
+• Изменить Прайс
+• Изменить Адрес
+• Изменить Контакты
+• Помощь (эта кнопка)"""
+        await query.message.reply_text(help_text, parse_mode="HTML")
         
     elif query.data == "edit_price" and user_id == ADMIN_ID:
         print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
