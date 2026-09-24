@@ -147,9 +147,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return EDIT_CONTACTS
     elif query.data == "help_admin" and user_id == ADMIN_ID:
         print(f"️ Админ запросил помощь (ID: {user_id})")
-        help_text = (
-            "📋 <b>Админ-команды:</b>\n\n"
-            "/admin - Открыть панель управления\n"
+        help_text = """📋 <b>Админ-команды:</b>
+
+/admin - Открыть панель управления
+/leads - Посмотреть все заявки
+/stats - Статистика использования
+/cancel - Отменить текущее действие
+
+<b>Кнопки в админ-панели:</b>
+• Изменить Прайс
+• Изменить Адрес
+• Изменить Контакты
+• Помощь (эта кнопка)"""
+        await query.message.reply_text(help_text, parse_mode="HTML")
 
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
