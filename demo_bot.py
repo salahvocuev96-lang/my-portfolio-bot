@@ -173,6 +173,7 @@ def main():
             PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=True,
     )
     application.add_handler(conv_handler)
 
@@ -184,6 +185,7 @@ def main():
             EDIT_CONTACTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_contacts)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=True,
     )
     application.add_handler(admin_handler)
 
