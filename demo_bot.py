@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 import threading
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -33,7 +34,8 @@ def load_data():
     return {
         "price": "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽",
         "address": "📍 Адрес: г. Москва, ул. Примерная, д. 1",
-        "contacts": "📞 Контакты: +7 (999) 123-45-67"
+        "contacts": "📞 Контакты: +7 (999) 123-45-67",
+        "leads": []
     }
 
 def save_data(data):
@@ -115,14 +117,20 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['phone'] = update.message.text
+    
+    # Сохраняем заявку в файл
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    new_lead = f"👤 {context.user_data['name']} | 📱 {context.user_data['phone']} | 🕒 {now}"
+    bot_data.setdefault("leads", []).append(new_lead)
+    save_data(bot_data)
+
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
+        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n Телефон: {context.user_data['phone']}",
         parse_mode="HTML"
     )
     await update.message.reply_text("Спасибо! Мы свяжемся с вами.")
     return ConversationHandler.END
-
 async def edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_data["price"] = update.message.text
     save_data(bot_data)
@@ -145,6 +153,21 @@ async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Контакты успешно обновлены!")
     return ConversationHandler.END
 
+async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    leads = bot_data.get("leads", [])
+    if not leads:
+        await update.message.reply_text("📭 Пока нет ни одной заявки.")
+        return
+    
+    text = "📋 <b>Все заявки:</b>\n\n"
+    for i, lead in enumerate(leads, 1):
+        text += f"{i}. {lead}\n"
+    
+    await update.message.reply_text(text, parse_mode="HTML")
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Действие отменено. Нажмите /start.")
     return ConversationHandler.END
@@ -164,6 +187,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
+    application.add_handler(CommandHandler("leads", show_leads))
     application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery)$"))
     
     conv_handler = ConversationHandler(
