@@ -140,6 +140,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # --- ЗАПУСК ---
+async def on_startup(application):
+    await application.bot.send_message(chat_id=ADMIN_ID, text="🟢 Бот успешно перезапустился и работает!")
+
 def main():
     if not BOT_TOKEN:
         print("Ошибка: Токен бота не найден!")
@@ -149,7 +152,7 @@ def main():
     keep_alive()
 
     # 2. Запускаем бота
-    application = Application.builder().token(BOT_TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
