@@ -52,17 +52,23 @@ bot_data = load_data()
 
 # --- ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Сохраняем пользователя в базу для рассылки
+    user_id = update.effective_user.id
+    stats = bot_data.setdefault("stats", {})
+    if user_id not in stats.get("users", []):
+        stats.setdefault("users", []).append(user_id)
+        save_data(bot_data)
+    
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
         [InlineKeyboardButton("📍 Адрес", callback_data="address")],
-        [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
+        [InlineKeyboardButton(" Контакты", callback_data="contacts")],
         [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
-        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
+        [InlineKeyboardButton(" Наши работы", callback_data="gallery")],
         [InlineKeyboardButton("⭐ Оставить отзыв", callback_data="leave_review")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Я бот-помощник.\nВыберите пункт:", reply_markup=reply_markup)
-
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
