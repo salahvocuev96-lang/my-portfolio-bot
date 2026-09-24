@@ -1,10 +1,11 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # --- FLASK KEEP-ALIVE (Чтобы Render не засыпал) ---
 app = Flask(__name__)
@@ -49,6 +50,7 @@ def save_data(data):
         print(f"❌ ОШИБКА СОХРАНЕНИЯ: {e}")
 
 bot_data = load_data()
+scheduler = AsyncIOScheduler()
 
 # --- ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,21 +155,34 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отлично! Теперь напишите ваш номер телефона:")
     return PHONE
 
+async def send_reminder(context: ContextTypes.DEFAULT_TYPE, user_id: int, name: str):
+    try:
+        await context.bot.send_message(chat_id=user_id, text=f"🔔 Напоминаем, {name}! Вы записаны к нам. Ждем вас!")
+    except Exception as e:
+        print(f"Ошибка отправки напоминания: {e}")
+
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['phone'] = update.message.text
     
-    # Сохраняем заявку в файл
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
     new_lead = f"👤 {context.user_data['name']} | 📱 {context.user_data['phone']} | 🕒 {now}"
     bot_data.setdefault("leads", []).append(new_lead)
     save_data(bot_data)
 
+    # Ставим напоминание через 30 секунд
+    scheduler.add_job(
+        send_reminder, 
+        'date', 
+        run_date=datetime.now() + timedelta(seconds=30), 
+        args=[context, update.effective_user.id, context.user_data['name']]
+    )
+
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
+        text=f" <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
         parse_mode="HTML"
     )
-    await update.message.reply_text("Спасибо! Мы свяжемся с вами.")
+    await update.message.reply_text("Спасибо! Мы свяжемся с вами. Напоминание придет через 30 секунд.")
     return ConversationHandler.END
 
 async def edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -298,6 +313,7 @@ def main():
         return
 
     keep_alive()
+    scheduler.start()
 
     application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
     
