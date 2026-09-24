@@ -148,11 +148,9 @@ def main():
         print("Ошибка: Токен бота не найден!")
         return
 
-    # 1. Запускаем Flask для Keep-Alive (чтобы Render не убивал бота)
     keep_alive()
 
-    # 2. Запускаем бота
-application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
+    application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
@@ -179,7 +177,6 @@ application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build
     )
     application.add_handler(admin_handler)
 
-    print("✅ БОТ ЗАПУЩЕН И СЛУШАЕТ СООБЩЕНИЯ...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
