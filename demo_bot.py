@@ -316,7 +316,7 @@ def main():
     application.add_handler(CommandHandler("stats", show_stats))
     application.add_handler(CommandHandler("reviews", show_reviews))
     application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin|leave_review)$"))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
     
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^(signup|leave_review)$")],
