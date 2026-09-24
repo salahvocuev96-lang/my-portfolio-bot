@@ -205,10 +205,22 @@ async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Контакты успешно обновлены!")
     return ConversationHandler.END
 
-async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Эта команда только для админа.")
         return
+    
+    leads = bot_data.get("leads", [])
+    if not leads:
+        await update.message.reply_text("📭 Пока нет ни одной заявки.")
+        return
+    
+    text = "📋 <b>Все заявки:</b>\n\n"
+    for i, lead in enumerate(leads, 1):
+        text += f"{i}. {lead}\n"
+    
+    await update.message.reply_text(text, parse_mode="HTML")
+
     
     stats = bot_data.get("stats", {})
     total_users = len(stats.get("users", []))
