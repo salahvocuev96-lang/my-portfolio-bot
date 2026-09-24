@@ -205,18 +205,21 @@ async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Контакты успешно обновлены!")
     return ConversationHandler.END
 
-async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Эта команда только для админа.")
         return
     
-    leads = bot_data.get("leads", [])
-    if not leads:
-        await update.message.reply_text("📭 Пока нет ни одной заявки.")
-        return
+    stats = bot_data.get("stats", {})
+    total_users = len(stats.get("users", []))
     
-    text = "📋 <b>Все заявки:</b>\n\n"
-    for i, lead in enumerate(leads, 1):
-        text += f"{i}. {lead}\n"
+    text = "📊 <b>Статистика бота:</b>\n\n"
+    text += f"👥 Уникальных пользователей: {total_users}\n\n"
+    text += f"💰 Прайс: {stats.get('price', 0)} нажатий\n"
+    text += f"📍 Адрес: {stats.get('address', 0)} нажатий\n"
+    text += f"📞 Контакты: {stats.get('contacts', 0)} нажатий\n"
+    text += f"📝 Записаться: {stats.get('signup', 0)} нажатий\n"
+    text += f"📸 Наши работы: {stats.get('gallery', 0)} нажатий"
     
     await update.message.reply_text(text, parse_mode="HTML")
 
@@ -240,6 +243,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("leads", show_leads))
+    application.add_handler(CommandHandler("stats", show_stats))
+    application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
     
     conv_handler = ConversationHandler(
