@@ -22,7 +22,7 @@ def keep_alive():
     t.start()
 
 # --- НАСТРОЙКИ БОТА ---
-NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS = range(5)
+NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW = range(6)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 8688778044 
 DATA_FILE = "bot_data.json"
@@ -52,10 +52,11 @@ bot_data = load_data()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
-        [InlineKeyboardButton("📍 Адрес", callback_data="address")],
+        [InlineKeyboardButton(" Адрес", callback_data="address")],
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
-        [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
-        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")]
+        [InlineKeyboardButton(" Записаться", callback_data="signup")],
+        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
+        [InlineKeyboardButton("⭐ Оставить отзыв", callback_data="leave_review")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Я бот-помощник.\nВыберите пункт:", reply_markup=reply_markup)
@@ -105,6 +106,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("➡️ Отправляем галерею")
         photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
         await query.message.reply_photo(photo=photo_url, caption="📸 Посмотрите наши работы!")
+    elif query.data == "leave_review":
+        print("➡️ Клиент хочет оставить отзыв")
+        await query.message.reply_text("Напишите ваш отзыв о нас:")
+        return REVIEW
     elif query.data == "edit_price" and user_id == ADMIN_ID:
         print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Прайса:")
@@ -235,6 +240,40 @@ async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text, parse_mode="HTML")
 
+async def get_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    review_text = update.message.text
+    user_name = context.user_data.get('name', 'Аноним')
+    
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    new_review = f"👤 {user_name} | 🕒 {now}\n💬 {review_text}"
+    
+    bot_data.setdefault("reviews", []).append(new_review)
+    save_data(bot_data)
+
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"⭐ <b>Новый отзыв!</b>\n{new_review}",
+        parse_mode="HTML"
+    )
+    await update.message.reply_text("Спасибо за ваш отзыв! Мы его опубликуем.")
+    return ConversationHandler.END
+
+async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Эта команда только для админа.")
+        return
+    
+    reviews = bot_data.get("reviews", [])
+    if not reviews:
+        await update.message.reply_text("📭 Пока нет ни одного отзыва.")
+        return
+    
+    text = "⭐ <b>Все отзывы:</b>\n\n"
+    for i, review in enumerate(reviews, 1):
+        text += f"{i}. {review}\n\n"
+    
+    await update.message.reply_text(text, parse_mode="HTML")
+
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Эта команда только для админа.")
@@ -274,14 +313,16 @@ def main():
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("leads", show_leads))
     application.add_handler(CommandHandler("stats", show_stats))
+    application.add_handler(CommandHandler("reviews", show_reviews))
     application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin|leave_review)$"))
     
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+            REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_review)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
