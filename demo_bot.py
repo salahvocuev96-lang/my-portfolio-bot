@@ -164,7 +164,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery)$"))
     
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
@@ -173,7 +173,6 @@ def main():
             PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True,
     )
     application.add_handler(conv_handler)
 
@@ -185,7 +184,6 @@ def main():
             EDIT_CONTACTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_contacts)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True,
     )
     application.add_handler(admin_handler)
 
