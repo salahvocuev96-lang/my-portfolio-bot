@@ -156,6 +156,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 /admin - Открыть панель управления
 /leads - Посмотреть все заявки
+/reviews - Посмотреть все отзывы
 /stats - Статистика использования
 /cancel - Отменить текущее действие
 
@@ -318,7 +319,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin|leave_review)$"))
     
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
+        entry_points=[CallbackQueryHandler(button, pattern="^(signup|leave_review)$")],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
