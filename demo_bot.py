@@ -240,7 +240,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("leads", show_leads))
-    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery)$"))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin)$"))
     
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button, pattern="^signup$")],
