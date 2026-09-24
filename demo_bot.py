@@ -37,8 +37,12 @@ def load_data():
     }
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        print(f"✅ Данные успешно сохранены в {DATA_FILE}")
+    except Exception as e:
+        print(f"❌ ОШИБКА СОХРАНЕНИЯ: {e}")
 
 bot_data = load_data()
 
@@ -122,8 +126,12 @@ async def edit_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    bot_data["contacts"] = update.message.text
+    new_text = update.message.text
+    print(f"📩 Бот получил новый текст: '{new_text}'")
+    
+    bot_data["contacts"] = new_text
     save_data(bot_data)
+    
     await update.message.reply_text("✅ Контакты успешно обновлены!")
     return ConversationHandler.END
 
