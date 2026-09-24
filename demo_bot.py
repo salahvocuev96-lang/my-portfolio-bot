@@ -54,9 +54,9 @@ bot_data = load_data()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
-        [InlineKeyboardButton(" Адрес", callback_data="address")],
+        [InlineKeyboardButton("📍 Адрес", callback_data="address")],
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
-        [InlineKeyboardButton(" Записаться", callback_data="signup")],
+        [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
         [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
         [InlineKeyboardButton("⭐ Оставить отзыв", callback_data="leave_review")]
     ]
@@ -70,10 +70,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Изменить Прайс", callback_data="edit_price")],
         [InlineKeyboardButton("Изменить Адрес", callback_data="edit_address")],
         [InlineKeyboardButton("Изменить Контакты", callback_data="edit_contacts")],
-        [InlineKeyboardButton("️ Помощь", callback_data="help_admin")],
+        [InlineKeyboardButton("⚙️ Помощь", callback_data="help_admin")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("️ Админ-панель. Что меняем?", reply_markup=reply_markup)
+    await update.message.reply_text("⚙️ Админ-панель. Что меняем?", reply_markup=reply_markup)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -124,9 +124,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
-        elif query.data == "help_admin" and user_id == ADMIN_ID:
-            print(f"➡️ Админ запросил помощь (ID: {user_id})")
-            help_text = """📋 <b>Админ-команды:</b>
+    elif query.data == "help_admin" and user_id == ADMIN_ID:
+        print(f"➡️ Админ запросил помощь (ID: {user_id})")
+        help_text = """📋 <b>Админ-команды:</b>
 
 /admin - Открыть панель управления
 /leads - Посмотреть все заявки
@@ -140,8 +140,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Изменить Адрес
 • Изменить Контакты
 • Помощь (эта кнопка)"""
-            await query.message.reply_text(help_text, parse_mode="HTML")
-
+        await query.message.reply_text(help_text, parse_mode="HTML")
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['name'] = update.message.text
@@ -159,11 +158,12 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n Телефон: {context.user_data['phone']}",
+        text=f"🔥 <b>Новая заявка!</b>\n👤 Имя: {context.user_data['name']}\n📱 Телефон: {context.user_data['phone']}",
         parse_mode="HTML"
     )
     await update.message.reply_text("Спасибо! Мы свяжемся с вами.")
     return ConversationHandler.END
+
 async def edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_data["price"] = update.message.text
     save_data(bot_data)
@@ -199,20 +199,6 @@ async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📋 <b>Все заявки:</b>\n\n"
     for i, lead in enumerate(leads, 1):
         text += f"{i}. {lead}\n"
-    
-    await update.message.reply_text(text, parse_mode="HTML")
-
-    
-    stats = bot_data.get("stats", {})
-    total_users = len(stats.get("users", []))
-    
-    text = "📊 <b>Статистика бота:</b>\n\n"
-    text += f"👥 Уникальных пользователей: {total_users}\n\n"
-    text += f"💰 Прайс: {stats.get('price', 0)} нажатий\n"
-    text += f"📍 Адрес: {stats.get('address', 0)} нажатий\n"
-    text += f"📞 Контакты: {stats.get('contacts', 0)} нажатий\n"
-    text += f"📝 Записаться: {stats.get('signup', 0)} нажатий\n"
-    text += f"📸 Наши работы: {stats.get('gallery', 0)} нажатий"
     
     await update.message.reply_text(text, parse_mode="HTML")
 
