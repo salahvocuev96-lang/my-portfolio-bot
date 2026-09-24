@@ -74,27 +74,37 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = update.effective_user.id
 
+    print(f"🔘 Получено нажатие кнопки: {query.data} от пользователя {user_id}")
+
     if query.data == "price":
+        print("➡️ Отправляем прайс")
         await query.message.reply_text(bot_data["price"])
     elif query.data == "address":
+        print("➡️ Отправляем адрес")
         await query.message.reply_text("Мы находимся здесь!")
         await context.bot.send_location(chat_id=query.message.chat_id, latitude=55.751244, longitude=37.618423)
     elif query.data == "contacts":
+        print("➡️ Отправляем контакты")
         await query.message.reply_text(bot_data["contacts"])
     elif query.data == "signup":
+        print("➡️ Начинаем запись клиента")
         await query.message.reply_text("Как вас зовут? Напишите ваше имя:")
         return NAME
     elif query.data == "gallery":
+        print("➡️ Отправляем галерею")
         photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
         await query.message.reply_photo(photo=photo_url, caption="📸 Посмотрите наши работы!")
         
     elif query.data == "edit_price" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Прайса:")
         return EDIT_PRICE
     elif query.data == "edit_address" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить адрес (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Адреса:")
         return EDIT_ADDRESS
     elif query.data == "edit_contacts" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
 
