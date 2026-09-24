@@ -67,9 +67,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Изменить Прайс", callback_data="edit_price")],
         [InlineKeyboardButton("Изменить Адрес", callback_data="edit_address")],
         [InlineKeyboardButton("Изменить Контакты", callback_data="edit_contacts")],
+        [InlineKeyboardButton("️ Помощь", callback_data="help_admin")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("⚙️ Админ-панель. Что меняем?", reply_markup=reply_markup)
+    await update.message.reply_text("️ Админ-панель. Что меняем?", reply_markup=reply_markup)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -102,13 +103,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Введите новый текст для Прайса:")
         return EDIT_PRICE
     elif query.data == "edit_address" and user_id == ADMIN_ID:
-        print(f"➡️ Админ хочет изменить адрес (ID: {user_id})")
+        print(f"️ Админ хочет изменить адрес (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Адреса:")
         return EDIT_ADDRESS
     elif query.data == "edit_contacts" and user_id == ADMIN_ID:
         print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
+    elif query.data == "help_admin" and user_id == ADMIN_ID:
+        print(f"️ Админ запросил помощь (ID: {user_id})")
+        help_text = (
+            "📋 <b>Админ-команды:</b>\n\n"
+            "/admin - Открыть панель управления\n"
+
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['name'] = update.message.text
