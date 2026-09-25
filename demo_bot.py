@@ -23,7 +23,7 @@ def keep_alive():
     t.start()
 
 # --- НАСТРОЙКИ БОТА ---
-NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW, BROADCAST = range(7)
+NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW, BROADCAST, EDIT_GALLERY = range(8)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 8688778044 
 DATA_FILE = "bot_data.json"
@@ -41,7 +41,8 @@ def load_data():
         "contacts": "📞 Контакты: +7 (999) 123-45-67",
         "leads": [],
         "reviews": [],
-        "stats": {"users": []}
+        "stats": {"users": []},
+        "gallery_photo_id": None
     }
 
 def save_data(data):
@@ -81,6 +82,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Изменить Прайс", callback_data="edit_price")],
         [InlineKeyboardButton("Изменить Адрес", callback_data="edit_address")],
         [InlineKeyboardButton("Изменить Контакты", callback_data="edit_contacts")],
+        [InlineKeyboardButton("Изменить Фото", callback_data="edit_gallery")],
         [InlineKeyboardButton("⚙️ Помощь", callback_data="help_admin")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -117,8 +119,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return NAME
     elif query.data == "gallery":
         print("➡️ Отправляем галерею")
-        photo_url = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1000&q=80"
-        await query.message.reply_photo(photo=photo_url, caption="📸 Посмотрите наши работы!")
+        photo_id = bot_data.get("gallery_photo_id")
+        if photo_id:
+            await query.message.reply_photo(photo=photo_id, caption="📸 Посмотрите наши работы!")
+        else:
+            await query.message.reply_text("📸 Галерея пока пуста. Администратор скоро добавит фото!")
     elif query.data == "leave_review":
         print("➡️ Клиент хочет оставить отзыв")
         await query.message.reply_text("Напишите ваш отзыв о нас:")
@@ -135,6 +140,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"➡️ Админ хочет изменить контакты (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Контактов:")
         return EDIT_CONTACTS
+    elif query.data == "edit_gallery" and user_id == ADMIN_ID:
+        print(f"➡️ Админ хочет изменить фото (ID: {user_id})")
+        await query.message.reply_text(" Отправьте мне новое фото для галереи (просто перешлите картинку):")
+        return EDIT_GALLERY
     elif query.data == "help_admin" and user_id == ADMIN_ID:
         print(f"➡️ Админ запросил помощь (ID: {user_id})")
         help_text = """📋 <b>Админ-команды:</b>
@@ -198,6 +207,17 @@ async def edit_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_data["address"] = update.message.text
     save_data(bot_data)
     await update.message.reply_text("✅ Адрес успешно обновлен!")
+    return ConversationHandler.END
+
+async def edit_gallery_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.photo:
+        # Берем файл самого большого размера
+        photo_file_id = update.message.photo[-1].file_id
+        bot_data["gallery_photo_id"] = photo_file_id
+        save_data(bot_data)
+        await update.message.reply_text("✅ Фото для галереи успешно обновлено!")
+    else:
+        await update.message.reply_text(" Это не фото. Пожалуйста, отправьте изображение.")
     return ConversationHandler.END
 
 async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -352,6 +372,7 @@ def main():
             EDIT_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_price)],
             EDIT_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_address)],
             EDIT_CONTACTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_contacts)],
+            EDIT_GALLERY: [MessageHandler(filters.PHOTO, edit_gallery_photo)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
