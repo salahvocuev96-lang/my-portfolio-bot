@@ -70,8 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
         [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
         [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
-        [InlineKeyboardButton("⭐ Оставить отзыв", callback_data="leave_review")],
-        [InlineKeyboardButton("💬 Читать отзывы", callback_data="read_reviews")]
+        [InlineKeyboardButton("⭐ Отзывы", callback_data="reviews_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Я бот-помощник.\nВыберите пункт:", reply_markup=reply_markup)
@@ -125,25 +124,26 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_photo(photo=photo_id, caption="📸 Посмотрите наши работы!")
         else:
             await query.message.reply_text("📸 Галерея пока пуста. Администратор скоро добавит фото!")
+    elif query.data == "reviews_menu":
+        print("➡️ Клиент открыл меню отзывов")
+        reviews = bot_data.get("reviews", [])
+        
+        if not reviews:
+            text = "📭 Пока никто не оставил отзыв. Будьте первым!"
+        else:
+            last_reviews = reviews[-5:][::-1]
+            text = "💬 <b>Отзывы наших клиентов:</b>\n\n"
+            for i, review in enumerate(last_reviews, 1):
+                text += f"{i}. {review}\n\n"
+        
+        keyboard = [[InlineKeyboardButton("✍️ Написать отзыв", callback_data="leave_review")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    
     elif query.data == "leave_review":
         print("➡️ Клиент хочет оставить отзыв")
         await query.message.reply_text("Напишите ваш отзыв о нас:")
         return REVIEW
-    elif query.data == "read_reviews":
-        print("➡️ Клиент читает отзывы")
-        reviews = bot_data.get("reviews", [])
-        if not reviews:
-            await query.message.reply_text("📭 Пока никто не оставил отзыв. Будьте первым!")
-            return
-        
-        # Берем последние 5 отзывов (в обратном порядке — новые сверху)
-        last_reviews = reviews[-5:][::-1]
-        
-        text = "💬 <b>Отзывы наших клиентов:</b>\n\n"
-        for i, review in enumerate(last_reviews, 1):
-            text += f"{i}. {review}\n\n"
-        
-        await query.message.reply_text(text, parse_mode="HTML")
     elif query.data == "edit_price" and user_id == ADMIN_ID:
         print(f"➡️ Админ хочет изменить прайс (ID: {user_id})")
         await query.message.reply_text("Введите новый текст для Прайса:")
@@ -363,7 +363,7 @@ def main():
     application.add_handler(CommandHandler("stats", show_stats))
     application.add_handler(CommandHandler("reviews", show_reviews))
     application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin|read_reviews)$"))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery|help_admin|reviews_menu)$"))
     
     # ConversationHandler для клиентских диалогов и рассылки
     conv_handler = ConversationHandler(
