@@ -1,1069 +1,564 @@
 import os
 import json
-import threading
 from datetime import datetime, timedelta
-
-from flask import Flask
+import threading
+from flask import Flask, send_file
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    CallbackQueryHandler,
-    ConversationHandler,
-    MessageHandler,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-
-# =========================================================
-# FLASK KEEP-ALIVE
-# =========================================================
-
+# --- FLASK KEEP-ALIVE ---
 app = Flask(__name__)
 
-
-@app.route("/")
+@app.route('/')
 def home():
     return "Bot is alive!"
 
-
 def run_flask():
-    app.run(host="0.0.0.0", port=10000)
-
+    app.run(host='0.0.0.0', port=10000)
 
 def keep_alive():
-    thread = threading.Thread(target=run_flask)
-    thread.daemon = True
-    thread.start()
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
 
+# --- НАСТРОЙКИ ---
+(
+    NAME, PHONE, DATE, TIME, 
+    EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, 
+    REVIEW, BROADCAST, EDIT_GALLERY, EDIT_FAQ, EDIT_PROMO,
+    CHAT_WITH_ADMIN
+) = range(13)
 
-# =========================================================
-# НАСТРОЙКИ
-# =========================================================
-
-NAME, PHONE, EDIT_PRICE, EDIT_ADDRESS, EDIT_CONTACTS, REVIEW, BROADCAST, EDIT_GALLERY = range(8)
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_TOKEN = os.environ.get("8823273688:AAHHkuNlI_qKOVGVQYAfJEXWlx3fkfqZLNQ")
 ADMIN_ID = 8688778044
 DATA_FILE = "bot_data.json"
 
 scheduler = AsyncIOScheduler()
 
-
-# =========================================================
-# РАБОТА С ДАННЫМИ
-# =========================================================
-
 def load_data():
     if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except Exception as e:
-            print(f"❌ Ошибка загрузки данных: {e}")
-
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
     return {
         "price": "📋 Прайс:\n• Услуга 1 — 1000₽\n• Услуга 2 — 2000₽",
         "address": "📍 Адрес: г. Москва, ул. Примерная, д. 1",
         "contacts": "📞 Контакты: +7 (999) 123-45-67",
         "leads": [],
         "reviews": [],
-        "stats": {
-            "users": [],
-            "price": 0,
-            "address": 0,
-            "contacts": 0,
-            "signup": 0,
-            "gallery": 0,
-            "reviews": 0,
-        },
-        "gallery_photo_id": None,
+        "faq": [
+            {"q": "Как записаться?", "a": "Нажмите кнопку 'Записаться' в главном меню."},
+            {"q": "Есть ли парковка?", "a": "Да, бесплатная парковка во дворе."},
+            {"q": "Какой график работы?", "a": "Пн-Вс с 9:00 до 21:00"}
+        ],
+        "promo": {"text": " Скидка 20% на первое посещение!", "photo_id": None},
+        "gallery": [],
+        "stats": {"users": [], "buttons": {}},
+        "reminders": []
     }
-
 
 def save_data(data):
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as file:
-            json.dump(
-                data,
-                file,
-                ensure_ascii=False,
-                indent=4
-            )
-
-        print(f"✅ Данные сохранены в {DATA_FILE}")
-
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        print(f"✅ Данные сохранены")
     except Exception as e:
-        print(f"❌ Ошибка сохранения данных: {e}")
-
+        print(f"❌ Ошибка сохранения: {e}")
 
 bot_data = load_data()
 
-
-# =========================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# =========================================================
-
-def register_user(user_id):
-    stats = bot_data.setdefault("stats", {})
-    users = stats.setdefault("users", [])
-
-    if user_id not in users:
-        users.append(user_id)
-        save_data(bot_data)
-
-
-def increment_stat(stat_name):
-    stats = bot_data.setdefault("stats", {})
-    stats[stat_name] = stats.get(stat_name, 0) + 1
-    save_data(bot_data)
-
-
-# =========================================================
-# КЛИЕНТСКОЕ МЕНЮ
-# =========================================================
-
+# --- ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
-    register_user(user_id)
-
+    user_name = update.effective_user.full_name
+    
+    # Сохраняем пользователя
+    stats = bot_data.setdefault("stats", {})
+    if user_id not in stats.get("users", []):
+        stats.setdefault("users", []).append(user_id)
+        save_data(bot_data)
+        
+        # Уведомление админу о новом пользователе
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"👤 <b>Новый пользователь!</b>\nID: {user_id}\nИмя: {user_name}",
+            parse_mode="HTML"
+        )
+    
     keyboard = [
         [InlineKeyboardButton("💰 Прайс", callback_data="price")],
         [InlineKeyboardButton("📍 Адрес", callback_data="address")],
         [InlineKeyboardButton("📞 Контакты", callback_data="contacts")],
         [InlineKeyboardButton("📝 Записаться", callback_data="signup")],
-        [InlineKeyboardButton("📸 Наши работы", callback_data="gallery")],
-        [InlineKeyboardButton("⭐ Отзывы", callback_data="reviews")],
+        [InlineKeyboardButton("📸 Галерея", callback_data="gallery_0")],
+        [InlineKeyboardButton("⭐ Отзывы", callback_data="reviews_menu")],
+        [InlineKeyboardButton("❓ FAQ", callback_data="faq")],
+        [InlineKeyboardButton("🔥 Акции", callback_data="promo")],
+        [InlineKeyboardButton("💬 Чат с админом", callback_data="chat_admin")]
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
-        "Привет! 👋\n\n"
-        "Я бот-помощник.\n"
-        "Выберите нужный пункт:",
-        reply_markup=reply_markup,
+        f"Привет, {user_name}! 👋\nЯ бот-помощник. Выберите раздел:",
+        reply_markup=reply_markup
     )
-
-
-# =========================================================
-# АДМИН-ПАНЕЛЬ
-# =========================================================
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ У вас нет доступа.")
         return
-
     keyboard = [
-        [InlineKeyboardButton("💰 Изменить прайс", callback_data="edit_price")],
-        [InlineKeyboardButton("📍 Изменить адрес", callback_data="edit_address")],
-        [InlineKeyboardButton("📞 Изменить контакты", callback_data="edit_contacts")],
-        [InlineKeyboardButton("📸 Изменить фото", callback_data="edit_gallery")],
-        [InlineKeyboardButton("⚙️ Помощь", callback_data="help_admin")],
+        [InlineKeyboardButton("✏️ Прайс", callback_data="edit_price")],
+        [InlineKeyboardButton("📍 Адрес", callback_data="edit_address")],
+        [InlineKeyboardButton("📞 Контакты", callback_data="edit_contacts")],
+        [InlineKeyboardButton(" Галерея", callback_data="edit_gallery")],
+        [InlineKeyboardButton("❓ FAQ", callback_data="edit_faq")],
+        [InlineKeyboardButton("🔥 Акции", callback_data="edit_promo")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
+        [InlineKeyboardButton(" Экспорт заявок", callback_data="export")],
+        [InlineKeyboardButton("📢 Рассылка", callback_data="broadcast")],
+        [InlineKeyboardButton("⚙️ Помощь", callback_data="help_admin")]
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        "⚙️ <b>Админ-панель</b>\n\n"
-        "Что хотите изменить?",
-        parse_mode="HTML",
-        reply_markup=reply_markup,
-    )
-
-
-# =========================================================
-# CALLBACK-КНОПКИ
-# =========================================================
+    await update.message.reply_text("⚙️ Админ-панель:", reply_markup=reply_markup)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = update.effective_user.id
-    callback_data = query.data
-
-    print(
-        f"🔘 Нажата кнопка: {callback_data} "
-        f"от пользователя {user_id}"
-    )
-
-    register_user(user_id)
-
-    # -----------------------------------------------------
-    # ПРАЙС
-    # -----------------------------------------------------
-
-    if callback_data == "price":
-        increment_stat("price")
-
-        await query.message.reply_text(
-            bot_data.get("price", "Прайс пока не установлен.")
-        )
-
-    # -----------------------------------------------------
-    # АДРЕС
-    # -----------------------------------------------------
-
-    elif callback_data == "address":
-        increment_stat("address")
-
-        await query.message.reply_text(
-            bot_data.get("address", "Адрес пока не установлен.")
-        )
-
-        # Текущая тестовая геолокация Москвы
+    
+    # Статистика
+    stats = bot_data.setdefault("stats", {})
+    button_stats = stats.setdefault("buttons", {})
+    button_stats[query.data] = button_stats.get(query.data, 0) + 1
+    save_data(bot_data)
+    
+    # Обработка кнопок
+    if query.data == "price":
+        await query.message.reply_text(bot_data["price"])
+    
+    elif query.data == "address":
+        await query.message.reply_text(bot_data["address"])
         await context.bot.send_location(
             chat_id=query.message.chat_id,
             latitude=55.751244,
-            longitude=37.618423,
+            longitude=37.618423
         )
-
-    # -----------------------------------------------------
-    # КОНТАКТЫ
-    # -----------------------------------------------------
-
-    elif callback_data == "contacts":
-        increment_stat("contacts")
-
-        await query.message.reply_text(
-            bot_data.get("contacts", "Контакты пока не установлены.")
-        )
-
-    # -----------------------------------------------------
-    # ЗАПИСЬ
-    # -----------------------------------------------------
-
-    elif callback_data == "signup":
-        increment_stat("signup")
-
-        context.user_data.clear()
-
-        await query.message.reply_text(
-            "📝 <b>Запись</b>\n\n"
-            "Как вас зовут?\n"
-            "Напишите ваше имя:",
-            parse_mode="HTML",
-        )
-
+    
+    elif query.data == "contacts":
+        await query.message.reply_text(bot_data["contacts"])
+    
+    elif query.data == "signup":
+        await query.message.reply_text("Как вас зовут?")
         return NAME
-
-    # -----------------------------------------------------
-    # ГАЛЕРЕЯ
-    # -----------------------------------------------------
-
-    elif callback_data == "gallery":
-        increment_stat("gallery")
-
-        photo_id = bot_data.get("gallery_photo_id")
-
-        if photo_id:
-            await query.message.reply_photo(
-                photo=photo_id,
-                caption="📸 Наши работы",
-            )
-        else:
-            await query.message.reply_text(
-                "📸 Галерея пока пуста.\n"
-                "Администратор скоро добавит фото."
-            )
-
-    # -----------------------------------------------------
-    # ОТЗЫВЫ
-    # -----------------------------------------------------
-
-    elif callback_data == "reviews":
-        increment_stat("reviews")
-
+    
+    elif query.data.startswith("gallery_"):
+        page = int(query.data.split("_")[1])
+        gallery = bot_data.get("gallery", [])
+        if not gallery:
+            await query.message.reply_text("📸 Галерея пуста")
+            return
+        
+        total_pages = len(gallery)
+        photo_id = gallery[page]
+        
+        keyboard = []
+        if page > 0:
+            keyboard.append(InlineKeyboardButton("◀️", callback_data=f"gallery_{page-1}"))
+        keyboard.append(InlineKeyboardButton(f"{page+1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            keyboard.append(InlineKeyboardButton("▶️", callback_data=f"gallery_{page+1}"))
+        
+        reply_markup = InlineKeyboardMarkup([keyboard])
+        await query.message.reply_photo(photo=photo_id, reply_markup=reply_markup)
+    
+    elif query.data == "reviews_menu":
         reviews = bot_data.get("reviews", [])
-
         if not reviews:
-            text = (
-                "⭐ <b>Отзывы наших клиентов</b>\n\n"
-                "📭 Пока никто не оставил отзыв.\n"
-                "Будьте первым!"
-            )
+            text = "📭 Пока нет отзывов. Будьте первым!"
         else:
             last_reviews = reviews[-5:][::-1]
-
-            text = "⭐ <b>Отзывы наших клиентов</b>\n\n"
-
-            for index, review in enumerate(last_reviews, 1):
-                text += f"{index}. {review}\n\n"
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "✍️ Написать отзыв",
-                    callback_data="leave_review",
-                )
-            ]
-        ]
-
+            text = "💬 <b>Отзывы клиентов:</b>\n\n"
+            for i, review in enumerate(last_reviews, 1):
+                text += f"{i}. {review}\n\n"
+        
+        keyboard = [[InlineKeyboardButton("✍️ Написать отзыв", callback_data="leave_review")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await query.message.reply_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=reply_markup,
-        )
-
-    # -----------------------------------------------------
-    # ОСТАВИТЬ ОТЗЫВ
-    # -----------------------------------------------------
-
-    elif callback_data == "leave_review":
-        await query.message.reply_text(
-            "⭐ <b>Напишите ваш отзыв:</b>",
-            parse_mode="HTML",
-        )
-
-        return REVIEW
-
-    # -----------------------------------------------------
-    # ИЗМЕНЕНИЕ ПРАЙСА
-    # -----------------------------------------------------
-
-    elif callback_data == "edit_price":
-        if user_id != ADMIN_ID:
-            await query.message.reply_text("⛔ Нет доступа.")
-            return
-
-        await query.message.reply_text(
-            "💰 Введите новый текст для прайса:"
-        )
-
+        await query.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    elif query.data == "faq":
+        faq_list = bot_data.get("faq", [])
+        keyboard = [[InlineKeyboardButton(item["q"], callback_data=f"faq_{i}")] for i, item in enumerate(faq_list)]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("❓ Частые вопросы:", reply_markup=reply_markup)
+    
+    elif query.data.startswith("faq_"):
+        idx = int(query.data.split("_")[1])
+        faq_list = bot_data.get("faq", [])
+        if idx < len(faq_list):
+            await query.message.reply_text(f"<b>{faq_list[idx]['q']}</b>\n\n{faq_list[idx]['a']}", parse_mode="HTML")
+    
+    elif query.data == "promo":
+        promo = bot_data.get("promo", {})
+        if promo.get("photo_id"):
+            await query.message.reply_photo(photo=promo["photo_id"], caption=promo.get("text", ""))
+        else:
+            await query.message.reply_text(promo.get("text", "🔥 Акции скоро появятся!"))
+    
+    elif query.data == "chat_admin":
+        await query.message.reply_text("Напишите ваше сообщение, и администратор ответит вам.")
+        return CHAT_WITH_ADMIN
+    
+    # Админские кнопки
+    elif query.data == "edit_price" and user_id == ADMIN_ID:
+        await query.message.reply_text("Введите новый прайс:")
         return EDIT_PRICE
-
-    # -----------------------------------------------------
-    # ИЗМЕНЕНИЕ АДРЕСА
-    # -----------------------------------------------------
-
-    elif callback_data == "edit_address":
-        if user_id != ADMIN_ID:
-            await query.message.reply_text("⛔ Нет доступа.")
-            return
-
-        await query.message.reply_text(
-            "📍 Введите новый текст для адреса:"
-        )
-
+    
+    elif query.data == "edit_address" and user_id == ADMIN_ID:
+        await query.message.reply_text("Введите новый адрес:")
         return EDIT_ADDRESS
-
-    # -----------------------------------------------------
-    # ИЗМЕНЕНИЕ КОНТАКТОВ
-    # -----------------------------------------------------
-
-    elif callback_data == "edit_contacts":
-        if user_id != ADMIN_ID:
-            await query.message.reply_text("⛔ Нет доступа.")
-            return
-
-        await query.message.reply_text(
-            "📞 Введите новые контакты:"
-        )
-
+    
+    elif query.data == "edit_contacts" and user_id == ADMIN_ID:
+        await query.message.reply_text("Введите новые контакты:")
         return EDIT_CONTACTS
-
-    # -----------------------------------------------------
-    # ИЗМЕНЕНИЕ ФОТО
-    # -----------------------------------------------------
-
-    elif callback_data == "edit_gallery":
-        if user_id != ADMIN_ID:
-            await query.message.reply_text("⛔ Нет доступа.")
-            return
-
-        await query.message.reply_text(
-            "📸 Отправьте новое фото для галереи:"
-        )
-
+    
+    elif query.data == "edit_gallery" and user_id == ADMIN_ID:
+        await query.message.reply_text("Отправьте фото для галереи (можно несколько):")
         return EDIT_GALLERY
+    
+    elif query.data == "edit_faq" and user_id == ADMIN_ID:
+        await query.message.reply_text("Введите вопрос и ответ в формате:\nВопрос\nОтвет")
+        return EDIT_FAQ
+    
+    elif query.data == "edit_promo" and user_id == ADMIN_ID:
+        await query.message.reply_text("Отправьте фото акции с подписью (текст акции):")
+        return EDIT_PROMO
+    
+    elif query.data == "stats" and user_id == ADMIN_ID:
+        await show_stats(update, context)
+    
+    elif query.data == "export" and user_id == ADMIN_ID:
+        await export_leads(update, context)
+    
+    elif query.data == "broadcast" and user_id == ADMIN_ID:
+        await query.message.reply_text("Введите текст для рассылки:")
+        return BROADCAST
+    
+    elif query.data == "help_admin" and user_id == ADMIN_ID:
+        help_text = """📋 <b>Админ-команды:</b>
 
-    # -----------------------------------------------------
-    # ПОМОЩЬ
-    # -----------------------------------------------------
+/admin - Админ-панель
+/leads - Все заявки
+/reviews - Все отзывы
+/broadcast - Рассылка
+/stats - Статистика
+/export - Экспорт заявок
+/cancel - Отменить действие
 
-    elif callback_data == "help_admin":
-        if user_id != ADMIN_ID:
-            await query.message.reply_text("⛔ Нет доступа.")
-            return
+<b>Кнопки:</b>
+• Редактирование прайса, адреса, контактов
+• Управление галереей и FAQ
+• Акции и спецпредложения
+• Удаление заявок"""
+        await query.message.reply_text(help_text, parse_mode="HTML")
+    
+    elif query.data.startswith("delete_lead_") and user_id == ADMIN_ID:
+        idx = int(query.data.split("_")[2])
+        leads = bot_data.get("leads", [])
+        if idx < len(leads):
+            deleted = leads.pop(idx)
+            save_data(bot_data)
+            await query.message.reply_text(f"🗑 Заявка удалена:\n{deleted}")
+    
+    elif query.data == "leave_review":
+        await query.message.reply_text("Напишите ваш отзыв:")
+        return REVIEW
+    
+    elif query.data == "noop":
+        pass
 
-        help_text = """
-📋 <b>Админ-команды:</b>
-
-/admin — открыть админ-панель
-/leads — посмотреть заявки
-/reviews — посмотреть отзывы
-/broadcast — сделать рассылку
-/stats — статистика
-/cancel — отменить действие
-
-<b>В админ-панели:</b>
-
-💰 Изменить прайс
-📍 Изменить адрес
-📞 Изменить контакты
-📸 Изменить фото
-⚙️ Помощь
-"""
-
-        await query.message.reply_text(
-            help_text,
-            parse_mode="HTML",
-        )
-
-
-# =========================================================
-# ЗАПИСЬ КЛИЕНТА
-# =========================================================
-
-async def get_name(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    name = update.message.text.strip()
-
-    if not name:
-        await update.message.reply_text(
-            "Пожалуйста, напишите ваше имя."
-        )
-        return NAME
-
-    context.user_data["name"] = name
-
-    await update.message.reply_text(
-        "Отлично! 👍\n\n"
-        "Теперь напишите ваш номер телефона:"
-    )
-
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['name'] = update.message.text
+    await update.message.reply_text("Ваш номер телефона?")
     return PHONE
 
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['phone'] = update.message.text
+    await update.message.reply_text("Дата записи (ДД.ММ.ГГГГ)?")
+    return DATE
 
-async def get_phone(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    phone = update.message.text.strip()
+async def get_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['date'] = update.message.text
+    await update.message.reply_text("Время записи (ЧЧ:ММ)?")
+    return TIME
 
-    if not phone:
-        await update.message.reply_text(
-            "Пожалуйста, укажите номер телефона."
-        )
-        return PHONE
-
-    context.user_data["phone"] = phone
-
-    name = context.user_data.get("name", "Не указано")
-
+async def get_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['time'] = update.message.text
+    
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-
     new_lead = {
-        "name": name,
-        "phone": phone,
-        "date": now,
-        "user_id": update.effective_user.id,
+        "name": context.user_data['name'],
+        "phone": context.user_data['phone'],
+        "date": context.user_data['date'],
+        "time": context.user_data['time'],
+        "created": now
     }
-
     bot_data.setdefault("leads", []).append(new_lead)
     save_data(bot_data)
-
-    # -----------------------------------------------------
-    # НАПОМИНАНИЕ
-    # -----------------------------------------------------
-
-    scheduler.add_job(
-        send_reminder,
-        "date",
-        run_date=datetime.now() + timedelta(seconds=30),
-        args=[
-            context,
-            update.effective_user.id,
-            name,
-        ],
-    )
-
-    # -----------------------------------------------------
-    # УВЕДОМЛЕНИЕ АДМИНУ
-    # -----------------------------------------------------
-
+    
+    # Напоминание за час до записи
+    try:
+        reminder_time = datetime.strptime(f"{new_lead['date']} {new_lead['time']}", "%d.%m.%Y %H:%M") - timedelta(hours=1)
+        if reminder_time > datetime.now():
+            scheduler.add_job(
+                send_reminder,
+                'date',
+                run_date=reminder_time,
+                args=[context, update.effective_user.id, new_lead['name'], new_lead['date'], new_lead['time']]
+            )
+    except:
+        pass
+    
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=(
-            "🔥 <b>Новая заявка!</b>\n\n"
-            f"👤 Имя: {name}\n"
-            f"📱 Телефон: {phone}\n"
-            f"🕒 Дата: {now}"
-        ),
-        parse_mode="HTML",
+        text=f"🔥 <b>Новая заявка!</b>\n👤 {new_lead['name']}\n📱 {new_lead['phone']}\n📅 {new_lead['date']} в {new_lead['time']}",
+        parse_mode="HTML"
     )
-
-    await update.message.reply_text(
-        "✅ Спасибо! Заявка принята.\n\n"
-        "Мы свяжемся с вами.\n"
-        "🔔 Тестовое напоминание придёт через 30 секунд."
-    )
-
-    context.user_data.clear()
-
+    await update.message.reply_text("✅ Вы записаны! Напоминание придет за час до визита.")
     return ConversationHandler.END
 
-
-async def send_reminder(
-    context: ContextTypes.DEFAULT_TYPE,
-    user_id: int,
-    name: str,
-):
+async def send_reminder(context: ContextTypes.DEFAULT_TYPE, user_id: int, name: str, date: str, time: str):
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text=(
-                f"🔔 Напоминаем, {name}!\n\n"
-                "Вы оставляли заявку.\n"
-                "Ждём вас! 😊"
-            ),
+            text=f"🔔 Напоминание: {name}, вы записаны {date} в {time}. Ждем вас!"
         )
-
     except Exception as e:
-        print(f"❌ Ошибка отправки напоминания: {e}")
+        print(f"Ошибка напоминания: {e}")
 
+async def edit_gallery_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.photo:
+        photo_file_id = update.message.photo[-1].file_id
+        bot_data.setdefault("gallery", []).append(photo_file_id)
+        save_data(bot_data)
+        await update.message.reply_text("✅ Фото добавлено в галерею!")
+    else:
+        await update.message.reply_text("❌ Это не фото")
+    return ConversationHandler.END
 
-# =========================================================
-# ОТЗЫВЫ
-# =========================================================
+async def edit_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_data["price"] = update.message.text
+    save_data(bot_data)
+    await update.message.reply_text("✅ Прайс обновлен!")
+    return ConversationHandler.END
 
-async def get_review(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    review_text = update.message.text.strip()
+async def edit_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_data["address"] = update.message.text
+    save_data(bot_data)
+    await update.message.reply_text("✅ Адрес обновлен!")
+    return ConversationHandler.END
 
-    if not review_text:
-        await update.message.reply_text(
-            "Пожалуйста, напишите текст отзыва."
-        )
-        return REVIEW
+async def edit_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_data["contacts"] = update.message.text
+    save_data(bot_data)
+    await update.message.reply_text("✅ Контакты обновлены!")
+    return ConversationHandler.END
 
-    user_name = update.effective_user.full_name or "Аноним"
+async def edit_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lines = update.message.text.split("\n", 1)
+    if len(lines) == 2:
+        bot_data.setdefault("faq", []).append({"q": lines[0], "a": lines[1]})
+        save_data(bot_data)
+        await update.message.reply_text("✅ Вопрос добавлен в FAQ!")
+    else:
+        await update.message.reply_text("❌ Формат: Вопрос\\nОтвет")
+    return ConversationHandler.END
 
+async def edit_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.photo:
+        photo_file_id = update.message.photo[-1].file_id
+        caption = update.message.caption or "🔥 Акция!"
+        bot_data["promo"] = {"text": caption, "photo_id": photo_file_id}
+        save_data(bot_data)
+        await update.message.reply_text("✅ Акция обновлена!")
+    else:
+        await update.message.reply_text("❌ Отправьте фото с подписью")
+    return ConversationHandler.END
+
+async def get_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    review_text = update.message.text
+    user_name = context.user_data.get('name', 'Аноним')
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-
-    new_review = {
-        "name": user_name,
-        "date": now,
-        "text": review_text,
-    }
-
+    new_review = f" {user_name} | 🕒 {now}\n💬 {review_text}"
+    
     bot_data.setdefault("reviews", []).append(new_review)
     save_data(bot_data)
-
+    
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=(
-            "⭐ <b>Новый отзыв!</b>\n\n"
-            f"👤 {user_name}\n"
-            f"🕒 {now}\n\n"
-            f"💬 {review_text}"
-        ),
-        parse_mode="HTML",
+        text=f"⭐ <b>Новый отзыв!</b>\n{new_review}",
+        parse_mode="HTML"
     )
-
-    await update.message.reply_text(
-        "❤️ Спасибо за ваш отзыв!\n\n"
-        "Он отправлен администратору."
-    )
-
+    await update.message.reply_text("✅ Спасибо за отзыв!")
     return ConversationHandler.END
 
-
-# =========================================================
-# АДМИН: РЕДАКТИРОВАНИЕ
-# =========================================================
-
-async def edit_price(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-
-    bot_data["price"] = update.message.text
-
-    save_data(bot_data)
-
-    await update.message.reply_text(
-        "✅ Прайс успешно обновлён!"
+async def chat_with_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message_text = update.message.text
+    user_id = update.effective_user.id
+    user_name = update.effective_user.full_name
+    
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"💬 <b>Сообщение от клиента:</b>\n👤 {user_name} (ID: {user_id})\n\n{message_text}",
+        parse_mode="HTML"
     )
-
+    await update.message.reply_text("✅ Сообщение отправлено администратору. Ожидайте ответа.")
     return ConversationHandler.END
 
-
-async def edit_address(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def show_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-
-    bot_data["address"] = update.message.text
-
-    save_data(bot_data)
-
-    await update.message.reply_text(
-        "✅ Адрес успешно обновлён!"
-    )
-
-    return ConversationHandler.END
-
-
-async def edit_contacts(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-
-    bot_data["contacts"] = update.message.text
-
-    save_data(bot_data)
-
-    await update.message.reply_text(
-        "✅ Контакты успешно обновлены!"
-    )
-
-    return ConversationHandler.END
-
-
-async def edit_gallery_photo(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-
-    if not update.message.photo:
-        await update.message.reply_text(
-            "❌ Это не фотография.\n"
-            "Пожалуйста, отправьте изображение."
-        )
-        return EDIT_GALLERY
-
-    photo_file_id = update.message.photo[-1].file_id
-
-    bot_data["gallery_photo_id"] = photo_file_id
-
-    save_data(bot_data)
-
-    await update.message.reply_text(
-        "✅ Фото для галереи успешно обновлено!"
-    )
-
-    return ConversationHandler.END
-
-
-# =========================================================
-# АДМИН: ЗАЯВКИ
-# =========================================================
-
-async def show_leads(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text(
-            "⛔ Эта команда только для администратора."
-        )
         return
-
+    
     leads = bot_data.get("leads", [])
-
     if not leads:
-        await update.message.reply_text(
-            "📭 Пока нет ни одной заявки."
-        )
+        await update.message.reply_text("📭 Нет заявок")
         return
+    
+    for i, lead in enumerate(leads):
+        text = f"📋 <b>Заявка #{i+1}</b>\n👤 {lead['name']}\n📱 {lead['phone']}\n📅 {lead['date']} в {lead['time']}"
+        keyboard = [[InlineKeyboardButton("🗑 Удалить", callback_data=f"delete_lead_{i}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
-    text = "📋 <b>Все заявки:</b>\n\n"
-
-    for index, lead in enumerate(leads, 1):
-        if isinstance(lead, dict):
-            text += (
-                f"{index}. 👤 {lead.get('name', 'Не указано')}\n"
-                f"   📱 {lead.get('phone', 'Не указано')}\n"
-                f"   🕒 {lead.get('date', 'Не указано')}\n\n"
-            )
-        else:
-            text += f"{index}. {lead}\n\n"
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# =========================================================
-# АДМИН: ОТЗЫВЫ
-# =========================================================
-
-async def show_reviews(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text(
-            "⛔ Эта команда только для администратора."
-        )
         return
-
+    
     reviews = bot_data.get("reviews", [])
-
     if not reviews:
-        await update.message.reply_text(
-            "📭 Пока нет ни одного отзыва."
-        )
+        await update.message.reply_text("📭 Нет отзывов")
         return
-
+    
     text = "⭐ <b>Все отзывы:</b>\n\n"
+    for i, review in enumerate(reviews, 1):
+        text += f"{i}. {review}\n\n"
+    
+    await update.message.reply_text(text, parse_mode="HTML")
 
-    for index, review in enumerate(reviews, 1):
-        if isinstance(review, dict):
-            text += (
-                f"{index}. 👤 {review.get('name', 'Аноним')}\n"
-                f"   🕒 {review.get('date', '')}\n"
-                f"   💬 {review.get('text', '')}\n\n"
-            )
-        else:
-            text += f"{index}. {review}\n\n"
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# =========================================================
-# РАССЫЛКА
-# =========================================================
-
-async def start_broadcast(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text(
-            "⛔ Эта команда только для администратора."
-        )
-        return ConversationHandler.END
+        return
+    
+    stats = bot_data.get("stats", {})
+    total_users = len(stats.get("users", []))
+    button_stats = stats.get("buttons", {})
+    
+    text = f"📊 <b>Статистика:</b>\n\n👥 Пользователей: {total_users}\n\n"
+    text += "<b>Нажатия кнопок:</b>\n"
+    for btn, count in sorted(button_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
+        text += f"• {btn}: {count}\n"
+    
+    await update.message.reply_text(text, parse_mode="HTML")
 
-    await update.message.reply_text(
-        "📢 Введите текст для рассылки всем пользователям:"
-    )
+async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    leads = bot_data.get("leads", [])
+    if not leads:
+        await update.message.reply_text("📭 Нет заявок для экспорта")
+        return
+    
+    filename = f"leads_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        for i, lead in enumerate(leads, 1):
+            f.write(f"{i}. {lead['name']} | {lead['phone']} | {lead['date']} {lead['time']}\n")
+    
+    with open(filename, "rb") as f:
+        await update.message.reply_document(document=f, filename=filename)
+    
+    os.remove(filename)
+    await update.message.reply_text("✅ Файл отправлен!")
 
+async def start_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    await update.message.reply_text("Введите текст для рассылки:")
     return BROADCAST
 
-
-async def process_broadcast(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-
-    broadcast_text = update.message.text
-
+async def process_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     users = bot_data.get("stats", {}).get("users", [])
-
+    
     success = 0
     failed = 0
-
+    
     for user_id in users:
         try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=broadcast_text,
-            )
-
+            await context.bot.send_message(chat_id=user_id, text=text)
             success += 1
-
-        except Exception as e:
-            print(
-                f"❌ Не удалось отправить сообщение "
-                f"{user_id}: {e}"
-            )
+        except:
             failed += 1
-
-    await update.message.reply_text(
-        "📢 <b>Рассылка завершена!</b>\n\n"
-        f"✅ Успешно отправлено: {success}\n"
-        f"❌ Ошибок: {failed}",
-        parse_mode="HTML",
-    )
-
+    
+    await update.message.reply_text(f"✅ Рассылка завершена!\nОтправлено: {success}\nОшибок: {failed}")
     return ConversationHandler.END
 
-
-# =========================================================
-# СТАТИСТИКА
-# =========================================================
-
-async def show_stats(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text(
-            "⛔ Эта команда только для администратора."
-        )
-        return
-
-    stats = bot_data.get("stats", {})
-
-    total_users = len(stats.get("users", []))
-
-    text = (
-        "📊 <b>Статистика бота</b>\n\n"
-        f"👥 Уникальных пользователей: {total_users}\n\n"
-        f"💰 Прайс: {stats.get('price', 0)}\n"
-        f"📍 Адрес: {stats.get('address', 0)}\n"
-        f"📞 Контакты: {stats.get('contacts', 0)}\n"
-        f"📝 Записаться: {stats.get('signup', 0)}\n"
-        f"📸 Наши работы: {stats.get('gallery', 0)}\n"
-        f"⭐ Отзывы: {stats.get('reviews', 0)}"
-    )
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# =========================================================
-# ОТМЕНА
-# =========================================================
-
-async def cancel(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    context.user_data.clear()
-
-    await update.message.reply_text(
-        "❌ Действие отменено.\n\n"
-        "Нажмите /start, чтобы открыть главное меню."
-    )
-
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(" Действие отменено")
     return ConversationHandler.END
 
-
-# =========================================================
-# STARTUP
-# =========================================================
-
+# --- ЗАПУСК ---
 async def on_startup(application):
-    try:
-        scheduler.start()
-        print("✅ Планировщик запущен.")
-    except Exception as e:
-        print(f"⚠️ Планировщик: {e}")
-
-    try:
-        await application.bot.send_message(
-            chat_id=ADMIN_ID,
-            text="🟢 Бот успешно перезапустился и работает!"
-        )
-    except Exception as e:
-        print(f"⚠️ Не удалось отправить сообщение админу: {e}")
-
-
-# =========================================================
-# MAIN
-# =========================================================
+    scheduler.start()
+    await application.bot.send_message(chat_id=ADMIN_ID, text="🟢 Бот запущен!")
 
 def main():
     if not BOT_TOKEN:
-        print("❌ Ошибка: BOT_TOKEN не найден в переменных окружения.")
+        print("Ошибка: Токен не найден!")
         return
-
-    print("🚀 Запуск бота...")
-
+    
     keep_alive()
-
-    application = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(on_startup)
-        .build()
-    )
-
-    # -----------------------------------------------------
-    # КОМАНДЫ
-    # -----------------------------------------------------
-
-    application.add_handler(
-        CommandHandler("start", start)
-    )
-
-    application.add_handler(
-        CommandHandler("admin", admin)
-    )
-
-    application.add_handler(
-        CommandHandler("leads", show_leads)
-    )
-
-    application.add_handler(
-        CommandHandler("reviews", show_reviews)
-    )
-
-    application.add_handler(
-        CommandHandler("stats", show_stats)
-    )
-
-    # -----------------------------------------------------
-    # CLIENT CONVERSATION
-    # -----------------------------------------------------
-
-    client_conversation = ConversationHandler(
+    
+    application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin))
+    application.add_handler(CommandHandler("leads", show_leads))
+    application.add_handler(CommandHandler("reviews", show_reviews))
+    application.add_handler(CommandHandler("cancel", cancel))
+    application.add_handler(CallbackQueryHandler(button, pattern="^(price|address|contacts|gallery_|reviews_menu|faq|faq_|promo|chat_admin|edit_|stats|export|broadcast|help_admin|delete_lead_|leave_review|noop)$"))
+    
+    conv_handler = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(
-                button,
-                pattern="^(signup|leave_review)$"
-            ),
-            CommandHandler(
-                "broadcast",
-                start_broadcast
-            ),
+            CallbackQueryHandler(button, pattern="^(signup|leave_review|chat_admin)$"),
+            CommandHandler("broadcast", start_broadcast)
         ],
-
         states={
-            NAME: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    get_name
-                )
-            ],
-
-            PHONE: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    get_phone
-                )
-            ],
-
-            REVIEW: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    get_review
-                )
-            ],
-
-            BROADCAST: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    process_broadcast
-                )
-            ],
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+            DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_date)],
+            TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_time)],
+            REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_review)],
+            BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_broadcast)],
+            CHAT_WITH_ADMIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, chat_with_admin)],
         },
-
-        fallbacks=[
-            CommandHandler(
-                "cancel",
-                cancel
-            )
-        ],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
-
-    application.add_handler(client_conversation)
-
-    # -----------------------------------------------------
-    # ADMIN CONVERSATION
-    # -----------------------------------------------------
-
-    admin_conversation = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(
-                button,
-                pattern="^edit_(price|address|contacts|gallery)$"
-            )
-        ],
-
+    application.add_handler(conv_handler)
+    
+    admin_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button, pattern="^edit_")],
         states={
-            EDIT_PRICE: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    edit_price
-                )
-            ],
-
-            EDIT_ADDRESS: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    edit_address
-                )
-            ],
-
-            EDIT_CONTACTS: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    edit_contacts
-                )
-            ],
-
-            EDIT_GALLERY: [
-                MessageHandler(
-                    filters.PHOTO,
-                    edit_gallery_photo
-                )
-            ],
+            EDIT_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_price)],
+            EDIT_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_address)],
+            EDIT_CONTACTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_contacts)],
+            EDIT_GALLERY: [MessageHandler(filters.PHOTO, edit_gallery_photo)],
+            EDIT_FAQ: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_faq)],
+            EDIT_PROMO: [MessageHandler(filters.PHOTO, edit_promo)],
         },
-
-        fallbacks=[
-            CommandHandler(
-                "cancel",
-                cancel
-            )
-        ],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
-
-    application.add_handler(admin_conversation)
-
-    # -----------------------------------------------------
-    # ОСТАЛЬНЫЕ CALLBACK-КНОПКИ
-    # -----------------------------------------------------
-
-    application.add_handler(
-        CallbackQueryHandler(
-            button,
-            pattern="^(price|address|contacts|gallery|reviews|help_admin)$"
-        )
-    )
-
-    # -----------------------------------------------------
-    # CANCEL
-    # -----------------------------------------------------
-
-    application.add_handler(
-        CommandHandler("cancel", cancel)
-    )
-
-    # -----------------------------------------------------
-    # ЗАПУСК
-    # -----------------------------------------------------
-
-    print("🟢 Бот запущен и ожидает сообщения...")
-
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES
-    )
-
-
-# =========================================================
-# ENTRY POINT
-# =========================================================
+    application.add_handler(admin_handler)
+    
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
